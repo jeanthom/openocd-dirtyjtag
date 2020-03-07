@@ -29,7 +29,7 @@
 #include <jtag/interface.h>
 #include <jtag/commands.h>
 #include <helper/time_support.h>
-#include "libusb1_common.h"
+#include "libusb_helper.h"
 
 /* system includes */
 #include <assert.h>
@@ -69,7 +69,7 @@ static const uint16_t dirtyjtag_pid = 0xC0CA;
 #define SIG_TRST (1 << 5)
 #define SIG_SRST (1 << 6)
 
-static jtag_libusb_device_handle *adapter;
+static struct libusb_device_handle *usb_handle;
 
 /**
  * Utils
@@ -106,7 +106,7 @@ static void dirtyjtag_buffer_flush(void)
 
 	dirtyjtag_buffer[dirtyjtag_buffer_use] = '\0';
 	
-	res = jtag_libusb_bulk_write(adapter, ep_write, (char*)dirtyjtag_buffer,
+	res = jtag_libusb_bulk_write(usb_handle, ep_write, (char*)dirtyjtag_buffer,
 		dirtyjtag_buffer_use+1, DIRTYJTAG_USB_TIMEOUT, &sent);
 	assert(res == ERROR_OK);
 	assert(sent == dirtyjtag_buffer_use+1);
@@ -154,7 +154,7 @@ static bool dirtyjtag_get_tdo(void)
 	dirtyjtag_buffer_append(command, sizeof(command)/sizeof(command[0]));
 	dirtyjtag_buffer_flush();
 
-	res = jtag_libusb_bulk_read(adapter, ep_read,
+	res = jtag_libusb_bulk_read(usb_handle, ep_read,
 		&state, 1, DIRTYJTAG_USB_TIMEOUT, &read);
 	assert(res == ERROR_OK);
 	assert(read == 1);
@@ -215,13 +215,13 @@ static int dirtyjtag_init(void)
 {
 	uint16_t avids[] = {dirtyjtag_vid, 0};
 	uint16_t apids[] = {dirtyjtag_pid, 0};
-	if (jtag_libusb_open(avids, apids, NULL, &adapter)) {
+	if (jtag_libusb_open(avids, apids, NULL, &usb_handle)) {
 		LOG_ERROR("dirtyjtag not found: vid=%04x, pid=%04x\n",
 			dirtyjtag_vid, dirtyjtag_pid);
 		return ERROR_JTAG_INIT_FAILED;
 	}
 
-	if (jtag_libusb_claim_interface(adapter, 0)) {
+	if (libusb_claim_interface(usb_handle, 0)) {
 		LOG_ERROR("unable to claim interface");
 		return ERROR_JTAG_INIT_FAILED;
 	}
@@ -231,10 +231,11 @@ static int dirtyjtag_init(void)
 
 static int dirtyjtag_quit(void)
 {
-	if (jtag_libusb_release_interface(adapter, 0) != 0)
+	if (libusb_release_interface(usb_handle, 0) != 0) {
 		LOG_ERROR("usb release interface failed");
+	}
 
-	jtag_libusb_close(adapter);
+	jtag_libusb_close(usb_handle);
 
 	return ERROR_OK;
 }
@@ -426,7 +427,7 @@ static void syncbb_scan(bool ir_scan, enum scan_type type, uint8_t *buffer, int 
 		dirtyjtag_buffer_flush();
 
 		read = 0;
-		res = jtag_libusb_bulk_read(adapter, ep_read,
+		res = jtag_libusb_bulk_read(usb_handle, ep_read,
 			(char*)xfer_rx, 32, DIRTYJTAG_USB_TIMEOUT, &read);
 		assert(res == ERROR_OK);
 		assert(read == 32);
