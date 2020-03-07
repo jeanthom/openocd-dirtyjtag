@@ -141,6 +141,9 @@ extern struct adapter_driver xds110_adapter_driver;
 #if BUILD_HLADAPTER == 1
 extern struct adapter_driver stlink_dap_adapter_driver;
 #endif
+#if BUILD_DIRTYJTAG == 1
+extern struct adapter_driver dirtyjtag_adapter_driver;
+#endif
 #endif /* standard drivers */
 
 /**
@@ -251,6 +254,9 @@ struct adapter_driver *adapter_drivers[] = {
 #endif
 #if BUILD_HLADAPTER == 1
 		&stlink_dap_adapter_driver,
+#endif
+#if BUILD_DIRTYJTAG == 1
+		&dirtyjtag_adapter_driver,
 #endif
 #endif /* standard drivers */
 		NULL,
