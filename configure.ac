@@ -116,7 +116,8 @@ m4_define([USB1_ADAPTERS],
 	[[usb_blaster_2], [Altera USB-Blaster II Compatible], [USB_BLASTER_2]],
 	[[ft232r], [Bitbang mode of FT232R based devices], [FT232R]],
 	[[vsllink], [Versaloon-Link JTAG Programmer], [VSLLINK]],
-	[[xds110], [TI XDS110 Debug Probe], [XDS110]]])
+	[[xds110], [TI XDS110 Debug Probe], [XDS110]],
+	[[dirtyjtag], [DirtyJTAG], [DIRTYJTAG]]])
 
 m4_define([USB_ADAPTERS],
 	[[[osbdm], [OSBDM (JTAG only) Programmer], [OSBDM]],
