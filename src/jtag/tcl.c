@@ -1131,7 +1131,7 @@ COMMAND_HANDLER(handle_irscan_command)
 		}
 		int field_size = tap->ir_length;
 		fields[i].num_bits = field_size;
-		uint8_t *v = malloc(DIV_ROUND_UP(field_size, 8));
+		uint8_t *v = calloc(1, DIV_ROUND_UP(field_size, 8));
 
 		uint64_t value;
 		retval = parse_u64(CMD_ARGV[i * 2 + 1], &value);
@@ -1314,7 +1314,7 @@ static const struct command_registration jtag_command_handlers[] = {
 		.name = "irscan",
 		.handler = handle_irscan_command,
 		.mode = COMMAND_EXEC,
-		.help = "Execute Instruction Register (DR) scan.  The "
+		.help = "Execute Instruction Register (IR) scan.  The "
 			"specified opcodes are put into each TAP's IR, "
 			"and other TAPs are put in BYPASS.",
 		.usage = "[tap_name instruction]* ['-endstate' state_name]",

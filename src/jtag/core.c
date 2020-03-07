@@ -842,6 +842,7 @@ void jtag_add_reset(int req_tlr_or_trst, int req_srst)
 	if (trst_with_tlr) {
 		LOG_DEBUG("JTAG reset with TLR instead of TRST");
 		jtag_add_tlr();
+		jtag_execute_queue();
 
 	} else if (jtag_trst != new_trst) {
 		jtag_trst = new_trst;
@@ -1232,7 +1233,7 @@ static int jtag_examine_chain(void)
 	/* Add room for end-of-chain marker. */
 	max_taps++;
 
-	uint8_t *idcode_buffer = malloc(max_taps * 4);
+	uint8_t *idcode_buffer = calloc(4, max_taps);
 	if (idcode_buffer == NULL)
 		return ERROR_JTAG_INIT_FAILED;
 

@@ -142,7 +142,7 @@ struct stm32l4_part_info {
 };
 
 struct stm32l4_flash_bank {
-	int probed;
+	bool probed;
 	uint32_t idcode;
 	int bank1_sectors;
 	bool dual_bank_mode;
@@ -282,7 +282,7 @@ FLASH_BANK_COMMAND_HANDLER(stm32l4_flash_bank_command)
 	 * Ask the flash infrastructure to ensure required alignment */
 	bank->write_start_alignment = bank->write_end_alignment = 8;
 
-	stm32l4_info->probed = 0;
+	stm32l4_info->probed = false;
 
 	return ERROR_OK;
 }
@@ -412,34 +412,39 @@ static int stm32l4_unlock_option_reg(struct flash_bank *bank)
 static int stm32l4_write_option(struct flash_bank *bank, uint32_t reg_offset, uint32_t value, uint32_t mask)
 {
 	uint32_t optiondata;
+	int retval, retval2;
 
-	int retval = stm32l4_read_flash_reg(bank, reg_offset, &optiondata);
+	retval = stm32l4_read_flash_reg(bank, reg_offset, &optiondata);
 	if (retval != ERROR_OK)
 		return retval;
 
 	retval = stm32l4_unlock_reg(bank);
 	if (retval != ERROR_OK)
-		return retval;
+		goto err_lock;
 
 	retval = stm32l4_unlock_option_reg(bank);
 	if (retval != ERROR_OK)
-		return retval;
+		goto err_lock;
 
 	optiondata = (optiondata & ~mask) | (value & mask);
 
 	retval = stm32l4_write_flash_reg(bank, reg_offset, optiondata);
 	if (retval != ERROR_OK)
-		return retval;
+		goto err_lock;
 
 	retval = stm32l4_write_flash_reg(bank, STM32_FLASH_CR, FLASH_OPTSTRT);
 	if (retval != ERROR_OK)
-		return retval;
+		goto err_lock;
 
 	retval = stm32l4_wait_status_busy(bank, FLASH_ERASE_TIMEOUT);
+
+err_lock:
+	retval2 = stm32l4_write_flash_reg(bank, STM32_FLASH_CR, FLASH_LOCK | FLASH_OPTLOCK);
+
 	if (retval != ERROR_OK)
 		return retval;
 
-	return retval;
+	return retval2;
 }
 
 static int stm32l4_protect_check(struct flash_bank *bank)
@@ -489,7 +494,7 @@ static int stm32l4_erase(struct flash_bank *bank, int first, int last)
 {
 	struct stm32l4_flash_bank *stm32l4_info = bank->driver_priv;
 	int i;
-	int retval;
+	int retval, retval2;
 
 	assert(first < bank->num_sectors);
 	assert(last < bank->num_sectors);
@@ -501,7 +506,7 @@ static int stm32l4_erase(struct flash_bank *bank, int first, int last)
 
 	retval = stm32l4_unlock_reg(bank);
 	if (retval != ERROR_OK)
-		return retval;
+		goto err_lock;
 
 	/*
 	Sector Erase
@@ -526,20 +531,22 @@ static int stm32l4_erase(struct flash_bank *bank, int first, int last)
 			erase_flags |= i << FLASH_PAGE_SHIFT;
 		retval = stm32l4_write_flash_reg(bank, STM32_FLASH_CR, erase_flags);
 		if (retval != ERROR_OK)
-			return retval;
+			break;
 
 		retval = stm32l4_wait_status_busy(bank, FLASH_ERASE_TIMEOUT);
 		if (retval != ERROR_OK)
-			return retval;
+			break;
 
 		bank->sectors[i].is_erased = 1;
 	}
 
-	retval = stm32l4_write_flash_reg(bank, STM32_FLASH_CR, FLASH_LOCK);
+err_lock:
+	retval2 = stm32l4_write_flash_reg(bank, STM32_FLASH_CR, FLASH_LOCK);
+
 	if (retval != ERROR_OK)
 		return retval;
 
-	return ERROR_OK;
+	return retval2;
 }
 
 static int stm32l4_protect(struct flash_bank *bank, int set, int first, int last)
@@ -690,10 +697,11 @@ static int stm32l4_write(struct flash_bank *bank, const uint8_t *buffer,
 
 	retval = stm32l4_unlock_reg(bank);
 	if (retval != ERROR_OK)
-		return retval;
+		goto err_lock;
 
 	retval = stm32l4_write_block(bank, buffer, offset, count / 8);
 
+err_lock:
 	retval2 = stm32l4_write_flash_reg(bank, STM32_FLASH_CR, FLASH_LOCK);
 
 	if (retval != ERROR_OK) {
@@ -717,12 +725,11 @@ static int stm32l4_probe(struct flash_bank *bank)
 	struct target *target = bank->target;
 	struct stm32l4_flash_bank *stm32l4_info = bank->driver_priv;
 	const struct stm32l4_part_info *part_info;
-	int i;
 	uint16_t flash_size_in_kb = 0xffff;
 	uint32_t device_id;
 	uint32_t options;
 
-	stm32l4_info->probed = 0;
+	stm32l4_info->probed = false;
 
 	/* read stm32 device id register */
 	int retval = stm32l4_read_idcode(bank, &stm32l4_info->idcode);
@@ -867,7 +874,7 @@ static int stm32l4_probe(struct flash_bank *bank)
 		return ERROR_FAIL;
 	}
 
-	for (i = 0; i < bank->num_sectors; i++) {
+	for (int i = 0; i < bank->num_sectors; i++) {
 		bank->sectors[i].offset = i * page_size;
 		/* in dual bank configuration, if there is a gap between banks
 		 * we fix up the sector offset to consider this gap */
@@ -878,7 +885,7 @@ static int stm32l4_probe(struct flash_bank *bank)
 		bank->sectors[i].is_protected = 1;
 	}
 
-	stm32l4_info->probed = 1;
+	stm32l4_info->probed = true;
 	return ERROR_OK;
 }
 
@@ -924,7 +931,7 @@ static int get_stm32l4_info(struct flash_bank *bank, char *buf, int buf_size)
 
 static int stm32l4_mass_erase(struct flash_bank *bank)
 {
-	int retval;
+	int retval, retval2;
 	struct target *target = bank->target;
 	struct stm32l4_flash_bank *stm32l4_info = bank->driver_priv;
 
@@ -940,35 +947,34 @@ static int stm32l4_mass_erase(struct flash_bank *bank)
 
 	retval = stm32l4_unlock_reg(bank);
 	if (retval != ERROR_OK)
-		return retval;
+		goto err_lock;
 
 	/* mass erase flash memory */
 	retval = stm32l4_wait_status_busy(bank, FLASH_ERASE_TIMEOUT / 10);
 	if (retval != ERROR_OK)
-		return retval;
+		goto err_lock;
 
 	retval = stm32l4_write_flash_reg(bank, STM32_FLASH_CR, action);
 	if (retval != ERROR_OK)
-		return retval;
+		goto err_lock;
+
 	retval = stm32l4_write_flash_reg(bank, STM32_FLASH_CR, action | FLASH_STRT);
 	if (retval != ERROR_OK)
-		return retval;
+		goto err_lock;
 
 	retval = stm32l4_wait_status_busy(bank,  FLASH_ERASE_TIMEOUT);
+
+err_lock:
+	retval2 = stm32l4_write_flash_reg(bank, STM32_FLASH_CR, FLASH_LOCK);
+
 	if (retval != ERROR_OK)
 		return retval;
 
-	retval = stm32l4_write_flash_reg(bank, STM32_FLASH_CR, FLASH_LOCK);
-	if (retval != ERROR_OK)
-		return retval;
-
-	return ERROR_OK;
+	return retval2;
 }
 
 COMMAND_HANDLER(stm32l4_handle_mass_erase_command)
 {
-	int i;
-
 	if (CMD_ARGC < 1) {
 		command_print(CMD, "stm32l4x mass_erase <STM32L4 bank>");
 		return ERROR_COMMAND_SYNTAX_ERROR;
@@ -982,7 +988,7 @@ COMMAND_HANDLER(stm32l4_handle_mass_erase_command)
 	retval = stm32l4_mass_erase(bank);
 	if (retval == ERROR_OK) {
 		/* set all sectors as erased */
-		for (i = 0; i < bank->num_sectors; i++)
+		for (int i = 0; i < bank->num_sectors; i++)
 			bank->sectors[i].is_erased = 1;
 
 		command_print(CMD, "stm32l4x mass erase complete");

@@ -45,7 +45,7 @@
 
 #include <jtag/interface.h>
 #include <jtag/commands.h>
-#include "libusb_common.h"
+#include "libusb_helper.h"
 
 static enum {
 	OPENJTAG_VARIANT_STANDARD,
@@ -111,7 +111,7 @@ static uint8_t usb_rx_buf[OPENJTAG_BUFFER_SIZE];
 static struct openjtag_scan_result openjtag_scan_result_buffer[OPENJTAG_MAX_PENDING_RESULTS];
 static int openjtag_scan_result_count;
 
-static jtag_libusb_device_handle *usbh;
+static struct libusb_device_handle *usbh;
 
 /* CY7C65215 model only */
 #define CY7C65215_JTAG_REQUEST  0x40  /* bmRequestType: vendor host-to-device */
@@ -229,7 +229,7 @@ static int openjtag_buf_write_standard(
 		return ERROR_JTAG_DEVICE_ERROR;
 	}
 
-	*bytes_written += retval;
+	*bytes_written = retval;
 
 	return ERROR_OK;
 }
@@ -652,7 +652,6 @@ static void openjtag_add_scan(uint8_t *buffer, int length, struct scan_command *
 			/* whole byte */
 
 			/* bits to transfer */
-			bits = 7;
 			command |= (7 << 5);
 			length -= 8;
 		}
@@ -690,7 +689,7 @@ static void openjtag_execute_sleep(struct jtag_command *cmd)
 
 static void openjtag_set_state(uint8_t openocd_state)
 {
-	int8_t state = openjtag_get_tap_state(openocd_state);
+	uint8_t state = openjtag_get_tap_state(openocd_state);
 
 	uint8_t buf = 0;
 	buf = 0x01;

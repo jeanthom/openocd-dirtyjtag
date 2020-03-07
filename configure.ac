@@ -117,10 +117,8 @@ m4_define([USB1_ADAPTERS],
 	[[ft232r], [Bitbang mode of FT232R based devices], [FT232R]],
 	[[vsllink], [Versaloon-Link JTAG Programmer], [VSLLINK]],
 	[[xds110], [TI XDS110 Debug Probe], [XDS110]],
-	[[dirtyjtag], [DirtyJTAG], [DIRTYJTAG]]])
-
-m4_define([USB_ADAPTERS],
-	[[[osbdm], [OSBDM (JTAG only) Programmer], [OSBDM]],
+	[[dirtyjtag], [DirtyJTAG], [DIRTYJTAG]],
+	[[osbdm], [OSBDM (JTAG only) Programmer], [OSBDM]],
 	[[opendous], [eStick/opendous JTAG Programmer], [OPENDOUS]],
 	[[aice], [Andes JTAG Programmer], [AICE]]])
 
@@ -236,7 +234,6 @@ m4_define([AC_ARG_ADAPTERS], [
 
 AC_ARG_ADAPTERS([
   USB1_ADAPTERS,
-  USB_ADAPTERS,
   USB0_ADAPTERS,
   HIDAPI_ADAPTERS,
   HIDAPI_USB1_ADAPTERS,
@@ -279,15 +276,7 @@ AC_ARG_ENABLE([ioutil],
   [build_ioutil=$enableval], [build_ioutil=no])
 
 AS_CASE(["${host_cpu}"],
-  [arm*], [
-    AC_ARG_ENABLE([ep93xx],
-      AS_HELP_STRING([--enable-ep93xx], [Enable building support for EP93xx based SBCs]),
-      [build_ep93xx=$enableval], [build_ep93xx=no])
-
-    AC_ARG_ENABLE([at91rm9200],
-      AS_HELP_STRING([--enable-at91rm9200], [Enable building support for AT91RM9200 based SBCs]),
-      [build_at91rm9200=$enableval], [build_at91rm9200=no])
-
+  [arm*|aarch64], [
     AC_ARG_ENABLE([bcm2835gpio],
       AS_HELP_STRING([--enable-bcm2835gpio], [Enable building support for bitbanging on BCM2835 (as found in Raspberry Pi)]),
       [build_bcm2835gpio=$enableval], [build_bcm2835gpio=no])
@@ -296,10 +285,23 @@ AS_CASE(["${host_cpu}"],
       [build_imx_gpio=$enableval], [build_imx_gpio=no])
   ],
   [
-    build_ep93xx=no
-    build_at91rm9200=no
     build_bcm2835gpio=no
     build_imx_gpio=no
+])
+
+AS_CASE(["${host_cpu}"],
+  [arm*], [
+    AC_ARG_ENABLE([ep93xx],
+      AS_HELP_STRING([--enable-ep93xx], [Enable building support for EP93xx based SBCs]),
+      [build_ep93xx=$enableval], [build_ep93xx=no])
+
+    AC_ARG_ENABLE([at91rm9200],
+      AS_HELP_STRING([--enable-at91rm9200], [Enable building support for AT91RM9200 based SBCs]),
+      [build_at91rm9200=$enableval], [build_at91rm9200=no])
+  ],
+  [
+    build_ep93xx=no
+    build_at91rm9200=no
 ])
 
 AC_ARG_ENABLE([gw16012],
@@ -661,7 +663,6 @@ m4_define([PROCESS_ADAPTERS], [
 ])
 
 PROCESS_ADAPTERS([USB1_ADAPTERS], ["x$use_libusb1" = "xyes"], [libusb-1.x])
-PROCESS_ADAPTERS([USB_ADAPTERS], ["x$use_libusb1" = "xyes" -o "x$use_libusb0" = "xyes"], [libusb-1.x or libusb-0.1])
 PROCESS_ADAPTERS([USB0_ADAPTERS], ["x$use_libusb0" = "xyes"], [libusb-0.1])
 PROCESS_ADAPTERS([HIDAPI_ADAPTERS], ["x$use_hidapi" = "xyes"], [hidapi])
 PROCESS_ADAPTERS([HIDAPI_USB1_ADAPTERS], ["x$use_hidapi" = "xyes" -a "x$use_libusb1" = "xyes"], [hidapi and libusb-1.x])
@@ -796,7 +797,7 @@ echo
 echo
 echo OpenOCD configuration summary
 echo --------------------------------------------------
-m4_foreach([adapter], [USB1_ADAPTERS, USB_ADAPTERS, USB0_ADAPTERS,
+m4_foreach([adapter], [USB1_ADAPTERS, USB0_ADAPTERS,
 	HIDAPI_ADAPTERS, HIDAPI_USB1_ADAPTERS, LIBFTDI_ADAPTERS,
 	LIBJAYLINK_ADAPTERS, PCIE_ADAPTERS],
 	[s=m4_format(["%-40s"], ADAPTER_DESC([adapter]))
