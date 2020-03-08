@@ -380,7 +380,6 @@ static void syncbb_runtest(int num_cycles)
 
 static void syncbb_scan(bool ir_scan, enum scan_type type, uint8_t *buffer, int scan_size)
 {
-	printf("syncbb_scan (ir_scan=%d, scan_type=%d, scan_size=%d)\n", ir_scan, type, scan_size);
 	tap_state_t saved_end_state = tap_get_end_state();
 	int sent_bits, sent_bytes, read, res;
 	size_t i, buffer_pos = 0;
@@ -444,7 +443,6 @@ static void syncbb_scan(bool ir_scan, enum scan_type type, uint8_t *buffer, int 
 
 	dirtyjtag_clk(1, 1, last_bit);
 	buffer[pos_last_byte] = (buffer[pos_last_byte] & ~(1 << pos_last_bit)) | (dirtyjtag_get_tdo() << pos_last_bit);
-
 
 	if (tap_get_state() != tap_get_end_state()) {
 		/* we *KNOW* the above loop transitioned out of
