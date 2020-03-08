@@ -203,10 +203,13 @@ static void dirtyjtag_reset(int trst, int srst)
 
 static int dirtyjtag_speed(int divisor)
 {
-	int baud = (divisor == 0) ? 3000000 :
-		(divisor == 1) ? 2000000 :
-		3000000 / divisor;
-	LOG_DEBUG("ft232r_speed(%d) rate %d bits/sec", divisor, baud);
+	uint8_t command[] = {
+		CMD_FREQ,
+		divisor >> 8,
+		divisor
+	};
+
+	dirtyjtag_buffer_append(command, sizeof(command)/sizeof(command[0]));
 
 	return ERROR_OK;
 }
@@ -242,13 +245,7 @@ static int dirtyjtag_quit(void)
 
 static int dirtyjtag_speed_div(int divisor, int *khz)
 {
-	/* Maximum 3 Mbaud for bit bang mode. */
-	if (divisor == 0)
-		*khz = 3000;
-	else if (divisor == 1)
-		*khz = 2000;
-	else
-		*khz = 3000 / divisor;
+	*khz = divisor;
 	return ERROR_OK;
 }
 
@@ -259,16 +256,7 @@ static int dirtyjtag_khz(int khz, int *divisor)
 		return ERROR_FAIL;
 	}
 
-	/* Calculate frequency divisor. */
-	if (khz > 2500)
-		*divisor = 0;		/* Special case: 3 MHz */
-	else if (khz > 1700)
-		*divisor = 1;		/* Special case: 2 MHz */
-	else {
-		*divisor = (2*3000 / khz + 1) / 2;
-		if (*divisor > 0x3FFF)
-			*divisor = 0x3FFF;
-	}
+	*divisor = (khz < 65535) ? khz : 65535;
 	return ERROR_OK;
 }
 
