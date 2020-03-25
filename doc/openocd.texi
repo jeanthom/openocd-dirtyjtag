@@ -537,15 +537,25 @@ debuggers to ARM Cortex based targets @url{http://www.keil.com/support/man/docs/
 
 @item @b{TI XDS110 Debug Probe}
 @* The XDS110 is included as the embedded debug probe on many Texas Instruments
-LaunchPad evaluation boards.
-@* The XDS110 is also available as a stand-alone USB debug probe. The XDS110
-stand-alone probe has the additional ability to supply voltage to the target
-board via its AUX FUNCTIONS port. Use the
-@command{xds110_supply_voltage <millivolts>} command to set the voltage. 0 turns
-off the supply. Otherwise, the supply can be set to any value in the range 1800
-to 3600 millivolts.
-@* Link: @url{http://processors.wiki.ti.com/index.php/XDS110}
-@* Link: @url{http://processors.wiki.ti.com/index.php/XDS_Emulation_Software_Package#XDS110_Support_Utilities}
+LaunchPad evaluation boards. The XDS110 is also available as a stand-alone USB
+debug probe with the added capability to supply power to the target board. The
+following commands are supported by the XDS110 driver:
+@*@deffn {Config Command} {xds110 serial} serial_string
+Specifies the serial number of which XDS110 probe to use. Otherwise, the first
+XDS110 found will be used.
+@end deffn
+@*@deffn {Config Command} {xds110 supply} voltage_in_millivolts
+Available only on the XDS110 stand-alone probe. Sets the voltage level of the
+XDS110 power supply. A value of 0 leaves the supply off. Otherwise, the supply
+can be set to any value in the range 1800 to 3600 millivolts.
+@end deffn
+@*@deffn {Command} {xds110 info}
+Displays information about the connected XDS110 debug probe (e.g. firmware
+version).
+@end deffn
+@* Further information can be found at the following sites:
+@* Link: @url{https://software-dl.ti.com/ccs/esd/documents/xdsdebugprobes/emu_xds110.html}
+@* Link: @url{https://software-dl.ti.com/ccs/esd/documents/xdsdebugprobes/emu_xds_software_package_download.html#xds110-support-utilities}
 @end itemize
 
 @section IBM PC Parallel Printer Port Based
@@ -4820,6 +4830,8 @@ The following target events are defined:
 @* Before target examine is called.
 @item @b{examine-end}
 @* After target examine is called with no errors.
+@item @b{examine-fail}
+@* After target examine fails.
 @item @b{gdb-attach}
 @* When GDB connects. Issued before any GDB communication with the target
 starts. GDB expects the target is halted during attachment.
@@ -5991,7 +6003,8 @@ Used in kinetis 'fcf_source protection' mode only.
 @end deffn
 
 @deffn Command {kinetis mdm check_security}
-Checks status of device security lock. Used internally in examine-end event.
+Checks status of device security lock. Used internally in examine-end
+and examine-fail event.
 @end deffn
 
 @deffn Command {kinetis mdm halt}
@@ -6889,8 +6902,10 @@ The @var{num} parameter is a value shown by @command{flash banks}.
 @end deffn
 
 @deffn {Flash Driver} stm32l4x
-All members of the STM32L4 and STM32WB microcontroller families from STMicroelectronics
-include internal flash and use ARM Cortex-M4 cores.
+All members of the STM32L4, STM32L4+, STM32WB, STM32WL and STM32G4
+microcontroller families from STMicroelectronics include internal flash
+and use ARM Cortex-M4 cores.
+Additionally this driver supports STM32G0 family with ARM Cortex-M0+ core.
 The driver automatically recognizes a number of these chips using
 the chip identification register, and autoconfigures itself.
 
@@ -6900,7 +6915,8 @@ flash bank $_FLASHNAME stm32l4x 0 0 0 0 $_TARGETNAME
 
 Note that some devices have been found that have a flash size register that contains
 an invalid value, to workaround this issue you can override the probed value used by
-the flash driver.
+the flash driver. However, specifying a wrong value might lead to a completely
+wrong flash layout, so this feature must be used carefully.
 
 @example
 flash bank $_FLASHNAME stm32l4x 0x08000000 0x40000 0 0 $_TARGETNAME
@@ -6957,7 +6973,7 @@ This will effectively write protect all sectors in flash bank 1.
 @end deffn
 
 @deffn Command {stm32l4x option_load} num
-Forces a re-load of the option byte registers. Will cause a reset of the device.
+Forces a re-load of the option byte registers. Will cause a system reset of the device.
 The @var{num} parameter is a value shown by @command{flash banks}.
 @end deffn
 @end deffn
