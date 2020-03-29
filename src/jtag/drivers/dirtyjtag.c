@@ -141,19 +141,6 @@ static void dirtyjtag_write(int tck, int tms, int tdi)
 }
 
 /**
- * Set TMS state
- */
-static void dirtyjtag_write_tms(int tms)
-{
-	uint8_t command[] = {
-		CMD_SETSIG,
-		SIG_TMS,
-		(tms ? SIG_TMS : 0)
-	};
-	dirtyjtag_buffer_append(command, sizeof(command)/sizeof(command[0]));
-}
-
-/**
  * Read TDO pin
  */
 static bool dirtyjtag_get_tdo(void)
@@ -421,8 +408,6 @@ static void syncbb_scan(bool ir_scan, enum scan_type type, uint8_t *buffer, int 
 	if (dirtyjtag_buffer_use+32+1 > dirtyjtag_buffer_size) {
 		dirtyjtag_buffer_flush();
 	}
-
-	dirtyjtag_write_tms(0);
 
 	while (scan_size > 0) {
 		sent_bits = min(240, scan_size);
