@@ -389,7 +389,6 @@ static void syncbb_scan(bool ir_scan, enum scan_type type, uint8_t *buffer, int 
 	tap_state_t saved_end_state = tap_get_end_state();
 	int sent_bits, sent_bytes, read, res;
 	size_t i, buffer_pos = 0;
-	int j;
 	uint8_t xfer_rx[32], xfer_tx[32] = {
 		CMD_XFER,
 		0
