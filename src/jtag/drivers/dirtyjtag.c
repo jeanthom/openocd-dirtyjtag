@@ -141,6 +141,19 @@ static void dirtyjtag_write(int tck, int tms, int tdi)
 }
 
 /**
+ * Set TMS state
+ */
+static void dirtyjtag_write_tms(int tms)
+{
+	uint8_t command[] = {
+		CMD_SETSIG,
+		SIG_TMS,
+		(tms ? SIG_TMS : 0)
+	};
+	dirtyjtag_buffer_append(command, sizeof(command)/sizeof(command[0]));
+}
+
+/**
  * Read TDO pin
  */
 static bool dirtyjtag_get_tdo(void)
@@ -218,7 +231,7 @@ static int dirtyjtag_init(void)
 {
 	uint16_t avids[] = {dirtyjtag_vid, 0};
 	uint16_t apids[] = {dirtyjtag_pid, 0};
-	if (jtag_libusb_open(avids, apids, NULL, &usb_handle)) {
+	if (jtag_libusb_open(avids, apids, NULL, &usb_handle, NULL)) {
 		LOG_ERROR("dirtyjtag not found: vid=%04x, pid=%04x\n",
 			dirtyjtag_vid, dirtyjtag_pid);
 		return ERROR_JTAG_INIT_FAILED;
@@ -264,18 +277,10 @@ static const struct command_registration dirtyjtag_command_handlers[] = {
 	COMMAND_REGISTRATION_DONE
 };
 
-/*
- * Synchronous bitbang protocol implementation.
- */
-
 static void syncbb_end_state(tap_state_t state)
 {
-	if (tap_is_state_stable(state))
-		tap_set_end_state(state);
-	else {
-		LOG_ERROR("BUG: %i is not a valid end state", state);
-		exit(-1);
-	}
+	assert(tap_is_state_stable(state));
+	tap_set_end_state(state);
 }
 
 static void syncbb_state_move(int skip)
@@ -366,11 +371,25 @@ static void syncbb_runtest(int num_cycles)
 		syncbb_state_move(0);
 }
 
+/**
+ * CMD_XFER:
+ *   Read TDO
+ *   Set TDI
+ *   Set TCK high
+ *	 Set TCK low
+ *
+ * Bitbang:
+ *   Read TDO
+ *   Set TDI, TMS, TCK low
+ *   Set TCK high
+ *
+ */
 static void syncbb_scan(bool ir_scan, enum scan_type type, uint8_t *buffer, int scan_size)
 {
 	tap_state_t saved_end_state = tap_get_end_state();
 	int sent_bits, sent_bytes, read, res;
 	size_t i, buffer_pos = 0;
+	int j;
 	uint8_t xfer_rx[32], xfer_tx[32] = {
 		CMD_XFER,
 		0
@@ -396,6 +415,8 @@ static void syncbb_scan(bool ir_scan, enum scan_type type, uint8_t *buffer, int 
 		dirtyjtag_buffer_flush();
 	}
 
+	dirtyjtag_write_tms(0);
+
 	while (scan_size > 0) {
 		sent_bits = min(240, scan_size);
 		sent_bytes = (sent_bits+7)/8;
@@ -406,6 +427,7 @@ static void syncbb_scan(bool ir_scan, enum scan_type type, uint8_t *buffer, int 
 				xfer_tx[i] = swap_bits(xfer_tx[i]);
 			}
 		} else {
+			/* Set TDO to 0 */
 			memset(&xfer_tx[2], 0, 30);
 		}
 		xfer_tx[1] = sent_bits;
@@ -429,8 +451,9 @@ static void syncbb_scan(bool ir_scan, enum scan_type type, uint8_t *buffer, int 
 		buffer_pos += sent_bytes; // equivalent to CEIL(sent_bits/8)
 	}
 
-	dirtyjtag_clk(1, 1, last_bit);
+	dirtyjtag_write(0, 1, last_bit);
 	buffer[pos_last_byte] = (buffer[pos_last_byte] & ~(1 << pos_last_bit)) | (dirtyjtag_get_tdo() << pos_last_bit);
+	dirtyjtag_clk(1, 1, last_bit);
 
 	if (tap_get_state() != tap_get_end_state()) {
 		/* we *KNOW* the above loop transitioned out of
@@ -476,9 +499,6 @@ static int syncbb_execute_queue(void)
 				break;
 
 			case JTAG_STABLECLOCKS:
-				/* this is only allowed while in a stable state.  A check for a stable
-				 * state was done in jtag_add_clocks()
-				 */
 				dirtyjtag_clk(cmd->cmd.stableclocks->num_cycles,
 					(tap_get_state() == TAP_RESET ? SIG_TMS : 0), 0);
 				break;
@@ -512,8 +532,6 @@ static int syncbb_execute_queue(void)
 				break;
 
 			case JTAG_SLEEP:
-				LOG_DEBUG_IO("sleep %" PRIi32, cmd->cmd.sleep->us);
-
 				jtag_sleep(cmd->cmd.sleep->us);
 				break;
 
