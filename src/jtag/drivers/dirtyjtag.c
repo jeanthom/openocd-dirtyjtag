@@ -396,6 +396,14 @@ static void syncbb_scan(bool ir_scan, enum scan_type type, uint8_t *buffer, int 
 	int pos_last_byte = (scan_size-1)/8;
 	int pos_last_bit = (scan_size-1)%8;
 	bool last_bit = !!(buffer[pos_last_byte] & (1 << pos_last_bit));
+	const size_t xfer_bytes = (scan_size+7)/8;
+
+	printf("\n*** syncbb_scan ****************************************\n");
+	printf("TX\t");
+	for (i = 0; i < xfer_bytes; i++) {
+		printf("%02x", buffer[i]);
+	}
+	printf("\n");
 
 	assert(scan_size > 0);
 	scan_size--;
@@ -453,6 +461,12 @@ static void syncbb_scan(bool ir_scan, enum scan_type type, uint8_t *buffer, int 
 	dirtyjtag_write(0, 1, last_bit);
 	buffer[pos_last_byte] = (buffer[pos_last_byte] & ~(1 << pos_last_bit)) | (dirtyjtag_get_tdo() << pos_last_bit);
 	dirtyjtag_clk(1, 1, last_bit);
+
+	printf("RX\t");
+	for (i = 0; i < xfer_bytes; i++) {
+		printf("%02x", buffer[i]);
+	}
+	printf("\n");
 
 	if (tap_get_state() != tap_get_end_state()) {
 		/* we *KNOW* the above loop transitioned out of
