@@ -42,11 +42,19 @@
 /**
  * USB settings
  */
-static const uint8_t ep_write = 0x01;
-static const uint8_t ep_read = 0x82;
 #define DIRTYJTAG_USB_TIMEOUT 100
-static const uint16_t dirtyjtag_vid = 0x1209;
-static const uint16_t dirtyjtag_pid = 0xC0CA;
+static const uint16_t dirtyjtag_default_vid = 0x1209;
+static const uint16_t dirtyjtag_default_pid = 0xC0CA;
+
+#define MAX_USB_IDS 8
+/* extra spot for the default */
+/* vid = pid = 0 marks the end of the list */
+static uint16_t dirtyjtag_vid[MAX_USB_IDS + 2] = { 0 };
+static uint16_t dirtyjtag_pid[MAX_USB_IDS + 2] = { 0 };
+
+static uint8_t itf_num  = 0;
+static uint8_t epout = 0x01;
+static uint8_t epin  = 0x82;
 
 /**
  * DirtyJTAG commands
@@ -106,7 +114,7 @@ static void dirtyjtag_buffer_flush(void)
 
 	dirtyjtag_buffer[dirtyjtag_buffer_use] = '\0';
 	
-	res = jtag_libusb_bulk_write(usb_handle, ep_write, (char*)dirtyjtag_buffer,
+	res = jtag_libusb_bulk_write(usb_handle, epout, (char*)dirtyjtag_buffer,
 		dirtyjtag_buffer_use+1, DIRTYJTAG_USB_TIMEOUT, &sent);
 	assert(res == ERROR_OK);
 	assert(sent == dirtyjtag_buffer_use+1);
@@ -154,7 +162,7 @@ static bool dirtyjtag_get_tdo(void)
 	dirtyjtag_buffer_append(command, sizeof(command)/sizeof(command[0]));
 	dirtyjtag_buffer_flush();
 
-	res = jtag_libusb_bulk_read(usb_handle, ep_read,
+	res = jtag_libusb_bulk_read(usb_handle, epin,
 		&state, 1, DIRTYJTAG_USB_TIMEOUT, &read);
 	assert(res == ERROR_OK);
 	assert(read == 1);
@@ -216,15 +224,14 @@ static int dirtyjtag_speed(int divisor)
 
 static int dirtyjtag_init(void)
 {
-	uint16_t avids[] = {dirtyjtag_vid, 0};
-	uint16_t apids[] = {dirtyjtag_pid, 0};
-	if (jtag_libusb_open(avids, apids, NULL, &usb_handle, NULL)) {
-		LOG_ERROR("dirtyjtag not found: vid=%04x, pid=%04x\n",
-			dirtyjtag_vid, dirtyjtag_pid);
+	dirtyjtag_vid[0] = dirtyjtag_default_vid;
+	dirtyjtag_pid[0] = dirtyjtag_default_pid;
+	if (jtag_libusb_open(dirtyjtag_vid, dirtyjtag_pid, NULL, &usb_handle, NULL)) {
+		LOG_ERROR("dirtyjtag not found");
 		return ERROR_JTAG_INIT_FAILED;
 	}
 
-	if (libusb_claim_interface(usb_handle, 0)) {
+	if (libusb_claim_interface(usb_handle, itf_num)) {
 		LOG_ERROR("unable to claim interface");
 		return ERROR_JTAG_INIT_FAILED;
 	}
@@ -234,7 +241,7 @@ static int dirtyjtag_init(void)
 
 static int dirtyjtag_quit(void)
 {
-	if (libusb_release_interface(usb_handle, 0) != 0) {
+	if (libusb_release_interface(usb_handle, itf_num) != 0) {
 		LOG_ERROR("usb release interface failed");
 	}
 
@@ -260,7 +267,91 @@ static int dirtyjtag_khz(int khz, int *divisor)
 	return ERROR_OK;
 }
 
+COMMAND_HANDLER(dirtyjtag_handle_vid_pid_command)
+{
+	if (CMD_ARGC > MAX_USB_IDS * 2) {
+		LOG_WARNING("ignoring extra IDs in dirtyjtag_vid_pid "
+			"(maximum is %d pairs)", MAX_USB_IDS);
+		CMD_ARGC = MAX_USB_IDS * 2;
+	}
+	if (CMD_ARGC < 2 || (CMD_ARGC & 1)) {
+		LOG_WARNING("incomplete dirtyjtag_vid_pid configuration directive");
+		if (CMD_ARGC < 2)
+			return ERROR_COMMAND_SYNTAX_ERROR;
+		/* remove the incomplete trailing id */
+		CMD_ARGC -= 1;
+	}
+
+	/* reserve first spot for default combination */
+	unsigned i;
+	for (i = 0; i < CMD_ARGC; i += 2) {
+		COMMAND_PARSE_NUMBER(u16, CMD_ARGV[i], dirtyjtag_vid[(i >> 1) + 1]);
+		COMMAND_PARSE_NUMBER(u16, CMD_ARGV[i + 1], dirtyjtag_pid[(i >> 1) + 1]);
+	}
+
+	/*
+	 * Explicitly terminate, in case there are multiples instances of
+	 * dirtyjtag_vid_pid.
+	 */
+	dirtyjtag_vid[(i >> 1) + 1] = dirtyjtag_pid[(i >> 1) + 1] = 0;
+
+	return ERROR_OK;
+}
+
+COMMAND_HANDLER(dirtyjtag_handle_itf_num_command)
+{
+	if (CMD_ARGC == 1)
+		COMMAND_PARSE_NUMBER(u8, CMD_ARGV[0], itf_num);
+	else
+		return ERROR_COMMAND_SYNTAX_ERROR;
+
+	return ERROR_OK;
+}
+
+COMMAND_HANDLER(dirtyjtag_handle_epout_epin_command)
+{
+	if (CMD_ARGC > 2) {
+		LOG_WARNING("ignoring extra endpoint numbers in dirtyjtag_epout_epin");
+		CMD_ARGC = 2;
+	}
+	if (CMD_ARGC < 2) {
+		LOG_ERROR("incomplete dirtyjtag_epout_epin configuration directive");
+		return ERROR_COMMAND_SYNTAX_ERROR;
+	}
+
+	COMMAND_PARSE_NUMBER(u8, CMD_ARGV[0], epout);
+	COMMAND_PARSE_NUMBER(u8, CMD_ARGV[1], epin);
+
+	if ((((epout & 0xF0) >> 4) != 0) | (((epin & 0xF0) >> 4) != 8)) {
+		LOG_ERROR("noncompliant endpoint specification");
+		return ERROR_COMMAND_SYNTAX_ERROR;
+	}
+
+	return ERROR_OK;
+}
+
 static const struct command_registration dirtyjtag_command_handlers[] = {
+	{
+		.name = "dirtyjtag_vid_pid",
+		.handler = &dirtyjtag_handle_vid_pid_command,
+		.mode = COMMAND_CONFIG,
+		.help = "possible vendor ID and product ID pairs of the DirtyJTAG device",
+		.usage = "(vid pid)* ",
+	},
+	{
+		.name = "dirtyjtag_itf_num",
+		.handler = &dirtyjtag_handle_itf_num_command,
+		.mode = COMMAND_CONFIG,
+		.help = "set the interface number of the DirtyJTAG device",
+		.usage = "(0-3)",
+	},
+	{
+		.name = "dirtyjtag_epout_epin",
+		.handler = &dirtyjtag_handle_epout_epin_command,
+		.mode = COMMAND_CONFIG,
+		.help = "set the out and in endpoints of the DirtyJTAG device",
+		.usage = "(epout epin)",
+	},
 	COMMAND_REGISTRATION_DONE
 };
 
@@ -428,7 +519,7 @@ static void syncbb_scan(bool ir_scan, enum scan_type type, uint8_t *buffer, int 
 		dirtyjtag_buffer_flush();
 
 		read = 0;
-		res = jtag_libusb_bulk_read(usb_handle, ep_read,
+		res = jtag_libusb_bulk_read(usb_handle, epin,
 			(char*)xfer_rx, 32, DIRTYJTAG_USB_TIMEOUT, &read);
 		assert(res == ERROR_OK);
 		assert(read == 32);
